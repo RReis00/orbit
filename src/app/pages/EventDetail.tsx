@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import {
-  getEvent,
-  listMembers,
-  joinEvent,
-  updateMemberSharing,
-  getLiveStatus,
-} from '../../mocks/api'
+import { getEvent, listMembers, joinEvent, updateMemberSharing } from '../../mocks/api'
 import { formatDateTimeISO } from '../../lib/date'
 import { useCurrentUser } from '../../lib/useCurrentUser'
-import type { Event, EventMember, LiveStatus } from '../../lib/types'
+import type { Event, EventMember } from '../../lib/types'
+import { LiveMap } from '../../features/map/LiveMap'
+import { useLivePoll } from '../../lib/useLivePoll'
+import { useGeoSend } from '../../lib/useGeoSend'
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>()
@@ -17,7 +14,6 @@ export function EventDetail() {
 
   const [event, setEvent] = useState<Event | null>(null)
   const [members, setMembers] = useState<EventMember[]>([])
-  const [live, setLive] = useState<LiveStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [joining, setJoining] = useState(false)
@@ -28,6 +24,14 @@ export function EventDetail() {
     [members, currentUser?.id],
   )
 
+  const sending = useGeoSend({
+    enabled: !!(event && meMember?.locationSharingEnabled && event.status === 'active'),
+    eventId: id,
+    userId: currentUser?.id,
+  })
+
+  const { live, loading: liveLoading } = useLivePoll(id, 5000)
+
   useEffect(() => {
     let active = true
     async function load() {
@@ -35,17 +39,15 @@ export function EventDetail() {
       setLoading(true)
       setError(null)
       try {
-        const [e, ms, ls] = await Promise.all([getEvent(id), listMembers(id), getLiveStatus(id)])
+        const [e, ms] = await Promise.all([getEvent(id), listMembers(id)])
         if (!active) return
         if (!e) {
           setError('Evento não encontrado.')
           setEvent(null)
           setMembers([])
-          setLive([])
         } else {
           setEvent(e)
           setMembers(ms)
-          setLive(ls)
         }
       } catch (err) {
         if (!active) return
@@ -150,19 +152,21 @@ export function EventDetail() {
       </header>
 
       <div className="grid gap-6 md:grid-cols-3">
-        {/* Mapa placeholder */}
+        {/* Mapa real */}
         <article className="md:col-span-2 rounded-2xl border border-white/10 p-4">
           <h2 className="mb-3 font-semibold">Mapa</h2>
-          <div className="grid h-64 place-items-center rounded-xl bg-white/5 text-white/50">
-            (Mapa em breve — Leaflet/MapLibre)
-          </div>
+          <LiveMap event={event} members={members} live={live} meUserId={currentUser?.id} />
           {event.hasGeofence && event.center && event.radiusM ? (
             <p className="mt-3 text-sm text-white/70">
               Geofence: centro ({event.center.lat.toFixed(5)}, {event.center.lng.toFixed(5)}) · raio{' '}
               {event.radiusM} m
+              {liveLoading && <span className="ml-2 opacity-70">(a atualizar…)</span>}
             </p>
           ) : (
-            <p className="mt-3 text-sm text-white/50">Sem geofence neste evento.</p>
+            <p className="mt-3 text-sm text-white/50">
+              Sem geofence neste evento.{' '}
+              {liveLoading && <span className="ml-2 opacity-70">(a atualizar…)</span>}
+            </p>
           )}
         </article>
 
