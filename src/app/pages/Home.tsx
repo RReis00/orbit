@@ -6,12 +6,10 @@ export function Home() {
   const navigate = useNavigate()
   return (
     <>
-      <div className="min-h-screen gradient-galaxy-radial flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
         <StarBackground />
         <div className="flex flex-col items-center gap-8 animate-fade-in">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">
-            Orbit
-          </h1>
+          <h1 className="text-5xl gradient-text">Orbit</h1>
           <OrbitLogo size={300} />
 
           <div className="text-center space-y-4">
@@ -23,7 +21,7 @@ export function Home() {
 
           <button
             onClick={() => navigate('/login')}
-            className="w-full py-4 rounded-full transition-all text-white bg-gradient-to-r from-indigo-600 to-fuchsia-600 shadow-lg transition transform hover:scale-105 active:scale-95"
+            className="w-full py-4 gradient-button"
           >
             Começar
           </button>

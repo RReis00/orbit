@@ -17,9 +17,7 @@ export function Login() {
       <div className="w-full max-w-md space-y-8">
         <div className="flex flex-col items-center gap-4">
           <img src="/orbit-icone1.png" alt="Orbit logo" width={150} />
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-500 to-fuchsia-500 bg-clip-text text-transparent">
-            Bem-vindo de volta
-          </h1>
+          <h1 className="text-3xl  gradient-text">Bem-vindo de volta</h1>
           <p className="text-white text-center">Entre e continue a explorar!</p>
         </div>
 
@@ -48,10 +46,7 @@ export function Login() {
             />
           </div>
 
-          <button
-            type="submit"
-            className="w-full rounded-full py-4 text-white bg-gradient-to-r from-indigo-600 to-fuchsia-600 shadow-lg transition transform hover:scale-105 active:scale-95"
-          >
+          <button type="submit" className="w-full py-4 gradient-button">
             Entrar
           </button>
         </form>
@@ -59,7 +54,7 @@ export function Login() {
         <div className="text-center">
           <p className="text-gray-400">
             Não tem conta?{' '}
-            <button className="relative bg-gradient-to-tr from-[#7c3aed] via-[#3b82f6] to-[#ec4899] bg-clip-text text-transparent font-medium transition-all after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-full after:bg-gradient-to-tr after:from-[#7c3aed] after:via-[#3b82f6] after:to-[#ec4899] after:rounded-full after:opacity-0 hover:after:opacity-100">
+            <button className="relative gradient-text bg-clip-text transition-all after:absolute after:left-0 after:-bottom-1 after:h-[2px] after:w-full after:bg-gradient-to-tr after:from-[#7c3aed] after:via-[#3b82f6] after:to-[#ec4899] after:rounded-full after:opacity-0 hover:after:opacity-100">
               Criar conta
             </button>
           </p>

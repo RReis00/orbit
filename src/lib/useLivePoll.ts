@@ -10,7 +10,7 @@ export function useLivePoll(eventId?: string, intervalMs = 10000) {
   useEffect(() => {
     if (!eventId) return
     let active = true
-    let timer: any
+    let timer: ReturnType<typeof setTimeout>
 
     const tick = async () => {
       try {
