@@ -6,7 +6,7 @@ import { useCurrentUser } from '../../lib/useCurrentUser'
 import type { Event, EventMember } from '../../lib/types'
 import { LiveMap } from '../../features/map/LiveMap'
 import { useLivePoll } from '../../lib/useLivePoll'
-import { useGeoSend } from '../../lib/useGeoSend'
+//import { useGeoSend } from '../../lib/useGeoSend'
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>()
@@ -23,12 +23,14 @@ export function EventDetail() {
     () => members.find((m) => m.userId === currentUser?.id),
     [members, currentUser?.id],
   )
-
+  
+  /*
   const sending = useGeoSend({
     enabled: !!(event && meMember?.locationSharingEnabled && event.status === 'active'),
     eventId: id,
     userId: currentUser?.id,
   })
+*/
 
   const { live, loading: liveLoading } = useLivePoll(id, 5000)
 
