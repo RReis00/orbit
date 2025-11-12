@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { LiveStatus } from './types'
 import { getLiveStatus } from '../mocks/api'
 
-export function useLivePoll(eventId?: string, intervalMs = 10000) {
+export function useLivePoll(eventId?: string, intervalMs = 2000) {
   const [live, setLive] = useState<LiveStatus[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

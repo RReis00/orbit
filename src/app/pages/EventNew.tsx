@@ -1,8 +1,18 @@
-import { useState } from 'react'
+// src/app/pages/EventNew.tsx
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createEvent } from '../../mocks/api'
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import type { GeoPoint } from '../../lib/types'
+
+function clampLatLng(lat?: number, lng?: number): GeoPoint | null {
+  if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null
+  const clamped: GeoPoint = {
+    lat: Math.max(-90, Math.min(90, lat)),
+    lng: Math.max(-180, Math.min(180, lng)),
+  }
+  return clamped
+}
 
 export function EventNew() {
   const navigate = useNavigate()
@@ -15,23 +25,44 @@ export function EventNew() {
   const [center, setCenter] = useState<GeoPoint | null>(null)
   const [radiusM, setRadiusM] = useState<number>(300)
   const [loading, setLoading] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
+  const [gettingCenter, setGettingCenter] = useState(false)
+
+  // validação
+  const datesValid = useMemo(() => {
+    if (!startsAt || !endsAt) return false
+    const s = new Date(startsAt).getTime()
+    const e = new Date(endsAt).getTime()
+    return Number.isFinite(s) && Number.isFinite(e) && s < e
+  }, [startsAt, endsAt])
+
+  const centerValid = useMemo(() => {
+    if (!hasGeofence) return true
+    if (!center) return false
+    return (
+      typeof center.lat === 'number' &&
+      typeof center.lng === 'number' &&
+      center.lat >= -90 &&
+      center.lat <= 90 &&
+      center.lng >= -180 &&
+      center.lng <= 180 &&
+      radiusM > 0
+    )
+  }, [hasGeofence, center, radiusM])
 
   const isValid =
     title.trim().length >= 1 &&
     title.trim().length <= 80 &&
-    startsAt &&
-    endsAt &&
-    new Date(startsAt) < new Date(endsAt) &&
-    (!hasGeofence || (center && radiusM > 0))
+    datesValid &&
+    centerValid
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isValid || !currentUser) return
-
     try {
       setLoading(true)
       const newEvent = await createEvent({
-        title,
+        title: title.trim(),
         startsAt,
         endsAt,
         hasGeofence,
@@ -43,6 +74,63 @@ export function EventNew() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // tenta semear o centro com a posição atual quando o utilizador liga a geofence
+  useEffect(() => {
+    if (!hasGeofence || center) return
+    // não bloqueia UI; se falhar, o user pode clicar no botão manualmente
+    if (!('geolocation' in navigator)) return
+    setGettingCenter(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c = clampLatLng(pos.coords.latitude, pos.coords.longitude)
+        if (c) setCenter(c)
+        setGettingCenter(false)
+      },
+      () => {
+        // silencioso aqui; mostramos botão para tentar de novo
+        setGettingCenter(false)
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
+    )
+  }, [hasGeofence]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleUseMyLocation() {
+    if (!('geolocation' in navigator)) {
+      setGeoError('Geolocalização não suportada neste navegador.')
+      return
+    }
+    setGettingCenter(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c = clampLatLng(pos.coords.latitude, pos.coords.longitude)
+        if (!c) {
+          setGeoError('Leitura inválida da posição.')
+        } else {
+          setCenter(c)
+        }
+        setGettingCenter(false)
+      },
+      (err) => {
+        setGeoError(err?.message || 'Não foi possível obter a tua localização.')
+        setGettingCenter(false)
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    )
+  }
+
+  function handleCenterLatChange(v: string) {
+    const n = Number(v)
+    const next = clampLatLng(n, center?.lng ?? 0)
+    setCenter(next)
+  }
+  function handleCenterLngChange(v: string) {
+    const n = Number(v)
+    const next = clampLatLng(center?.lat ?? 0, n)
+    setCenter(next)
   }
 
   return (
@@ -105,17 +193,33 @@ export function EventNew() {
         {/* Se geofence ativa, mostrar inputs */}
         {hasGeofence && (
           <div className="space-y-4 rounded-xl border border-white/10 p-4">
+            {/* Raio */}
             <div className="space-y-2">
               <label className="block text-sm text-white/80">Raio (metros)</label>
-              <input
-                type="number"
-                min={1}
-                value={radiusM}
-                onChange={(e) => setRadiusM(Number(e.target.value))}
-                className="w-full rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
-              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-center">
+                <input
+                  type="range"
+                  min={10}
+                  max={5000}
+                  step={10}
+                  value={radiusM}
+                  onChange={(e) => setRadiusM(Number(e.target.value))}
+                  className="col-span-2 w-full"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={radiusM}
+                  onChange={(e) => setRadiusM(Math.max(1, Number(e.target.value) || 1))}
+                  className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
+                />
+              </div>
+              <p className="text-xs text-white/50">
+                ~ {(radiusM / 1000).toFixed(2)} km
+              </p>
             </div>
 
+            {/* Centro */}
             <div className="space-y-2">
               <label className="block text-sm text-white/80">Centro (lat, lng)</label>
               <div className="grid grid-cols-2 gap-2">
@@ -124,9 +228,7 @@ export function EventNew() {
                   step="any"
                   placeholder="Lat"
                   value={center?.lat ?? ''}
-                  onChange={(e) =>
-                    setCenter({ lat: Number(e.target.value), lng: center?.lng ?? 0 })
-                  }
+                  onChange={(e) => handleCenterLatChange(e.target.value)}
                   className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
                 />
                 <input
@@ -134,15 +236,40 @@ export function EventNew() {
                   step="any"
                   placeholder="Lng"
                   value={center?.lng ?? ''}
-                  onChange={(e) =>
-                    setCenter({ lat: center?.lat ?? 0, lng: Number(e.target.value) })
-                  }
+                  onChange={(e) => handleCenterLngChange(e.target.value)}
                   className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
                 />
               </div>
-              <p className="text-xs text-white/60">
-                (Mais tarde isto será escolhido no mapa com um clique.)
-              </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleUseMyLocation}
+                  disabled={gettingCenter}
+                  className="rounded-xl bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15 disabled:cursor-not-allowed"
+                >
+                  {gettingCenter ? 'A obter localização…' : 'Usar a minha localização'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCenter(null)}
+                  className="rounded-xl bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15"
+                >
+                  Limpar centro
+                </button>
+
+                {/* Placeholder para integrar “Escolher no mapa” */}
+                <span className="text-xs text-white/50">
+                  (Em breve: escolher no mapa com um clique)
+                </span>
+              </div>
+
+              {geoError && <p className="text-xs text-amber-300/80">{geoError}</p>}
+              {center && (
+                <p className="text-xs text-white/60">
+                  Centro definido em ({center.lat.toFixed(5)}, {center.lng.toFixed(5)})
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -167,7 +294,7 @@ export function EventNew() {
 
         {!isValid && (
           <p className="text-sm text-red-400/90">
-            Preenche o título, datas válidas e, se ligares a geofence, define centro e raio &gt; 0.
+            Preenche o título, datas válidas e, se ligares a geofence, define centro e um raio &gt; 0.
           </p>
         )}
       </form>

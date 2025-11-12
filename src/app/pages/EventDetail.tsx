@@ -1,9 +1,10 @@
+// src/app/pages/EventDetail.tsx
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getEvent, listMembers, joinEvent, updateMemberSharing } from '../../mocks/api'
 import { formatDateTimeISO } from '../../lib/date'
 import { useCurrentUser } from '../../lib/useCurrentUser'
-import type { Event, EventMember } from '../../lib/types'
+import type { Event, EventMember, LiveStatus } from '../../lib/types'
 import { LiveMap } from '../../features/map/LiveMap'
 import { useLivePoll } from '../../lib/useLivePoll'
 import { useAlertChannel } from '../../lib/useAlertChannel'
@@ -28,7 +29,8 @@ export function EventDetail() {
     [members, currentUser?.id],
   )
 
-  useGeoSend({
+  // Envio de geolocalização (cliente -> backend) + coords locais p/ overlay
+  const { coords, error: geoError, isWatching, usingFallback, lastSentAt } = useGeoSend({
     enabled: !!(event && meMember?.locationSharingEnabled && event.status === 'active'),
     eventId: id,
     userId: currentUser?.id,
@@ -36,7 +38,23 @@ export function EventDetail() {
     minDeltaMeters: 5,
   })
 
-  const { live, loading: liveLoading } = useLivePoll(id, 5000)
+  // Receção periódica (backend -> cliente)
+  const { live, loading: liveLoading, error: liveError } = useLivePoll(id, 5000)
+
+  // Sobrepor a minha posição local no live (sem esperar roundtrip)
+  const liveForMap = useMemo<LiveStatus[]>(() => {
+    if (!coords || !currentUser?.id) return live
+    return live.map((ls): LiveStatus =>
+      ls.userId === currentUser.id
+        ? {
+            ...ls,
+            lastLat: coords.latitude,
+            lastLng: coords.longitude,
+            lastAt: new Date().toISOString(),
+          }
+        : ls,
+    )
+  }, [live, coords, currentUser?.id])
 
   useEffect(() => {
     let active = true
@@ -79,7 +97,7 @@ export function EventDetail() {
         precisionBlurM: 0,
       })
       setMembers((prev) => {
-        const exists = prev.find((m) => m.userId === joined.userId)
+        const exists = prev.some((m) => m.userId === joined.userId)
         return exists ? prev : [...prev, joined]
       })
     } finally {
@@ -130,6 +148,10 @@ export function EventDetail() {
   if (!event) return null
 
   const iAmMember = !!meMember
+  const geoHints =
+    geoError || liveError
+      ? [geoError, liveError].filter(Boolean).join(' · ')
+      : undefined
 
   return (
     <section className="space-y-6">
@@ -148,8 +170,8 @@ export function EventDetail() {
               (event.status === 'active'
                 ? 'bg-emerald-500/15 text-emerald-300'
                 : event.status === 'scheduled'
-                  ? 'bg-sky-500/15 text-sky-300'
-                  : 'bg-red-500/15 text-red-300')
+                ? 'bg-sky-500/15 text-sky-300'
+                : 'bg-red-500/15 text-red-300')
             }
           >
             {event.status}
@@ -161,7 +183,9 @@ export function EventDetail() {
         {/* Mapa real */}
         <article className="md:col-span-2 rounded-2xl border border-white/10 p-4">
           <h2 className="mb-3 font-semibold">Mapa</h2>
-          <LiveMap event={event} members={members} live={live} meUserId={currentUser?.id} />
+
+          <LiveMap event={event} members={members} live={liveForMap} meUserId={currentUser?.id} />
+
           {event.hasGeofence && event.center && event.radiusM ? (
             <p className="mt-3 text-sm text-white/70">
               Geofence: centro ({event.center.lat.toFixed(5)}, {event.center.lng.toFixed(5)}) · raio{' '}
@@ -170,10 +194,29 @@ export function EventDetail() {
             </p>
           ) : (
             <p className="mt-3 text-sm text-white/50">
-              Sem geofence neste evento.{' '}
+              Sem geofence neste evento.
               {liveLoading && <span className="ml-2 opacity-70">(a atualizar…)</span>}
             </p>
           )}
+
+          {/* Estado de localização (watch/fallback/último envio) */}
+          <div className="mt-2 text-xs text-white/60">
+            <span className="mr-2">
+              {isWatching ? 'watch ativo' : 'watch inativo'}
+            </span>
+            <span className="mr-2">·</span>
+            <span className="mr-2">
+              {usingFallback ? 'fallback por intervalo' : 'sem fallback'}
+            </span>
+            {lastSentAt && (
+              <>
+                <span className="mr-2">·</span>
+                <span>último envio: {formatDateTimeISO(lastSentAt)}</span>
+              </>
+            )}
+          </div>
+
+          {geoHints && <p className="mt-2 text-xs text-amber-300/80">{geoHints}</p>}
         </article>
 
         {/* Lateral: Participantes / Controlo */}
