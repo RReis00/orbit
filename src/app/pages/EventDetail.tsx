@@ -6,7 +6,9 @@ import { useCurrentUser } from '../../lib/useCurrentUser'
 import type { Event, EventMember } from '../../lib/types'
 import { LiveMap } from '../../features/map/LiveMap'
 import { useLivePoll } from '../../lib/useLivePoll'
-//import { useGeoSend } from '../../lib/useGeoSend'
+import { useAlertChannel } from '../../lib/useAlertChannel'
+import { AlertRulesPanel } from '../../features/events/AlertRulesPanel'
+import { useGeoSend } from '../../lib/useGeoSend'
 
 export function EventDetail() {
   const { id } = useParams<{ id: string }>()
@@ -19,18 +21,20 @@ export function EventDetail() {
   const [joining, setJoining] = useState(false)
   const [toggling, setToggling] = useState(false)
 
+  useAlertChannel(currentUser?.id)
+
   const meMember = useMemo(
     () => members.find((m) => m.userId === currentUser?.id),
     [members, currentUser?.id],
   )
-  
-  /*
-  const sending = useGeoSend({
+
+  useGeoSend({
     enabled: !!(event && meMember?.locationSharingEnabled && event.status === 'active'),
     eventId: id,
     userId: currentUser?.id,
+    intervalMs: 5000,
+    minDeltaMeters: 5,
   })
-*/
 
   const { live, loading: liveLoading } = useLivePoll(id, 5000)
 
@@ -218,9 +222,7 @@ export function EventDetail() {
 
           <div className="rounded-2xl border border-white/10 p-4">
             <h3 className="mb-2 font-semibold">Alertas</h3>
-            <p className="text-sm text-white/70">
-              Configura quem recebe quando alguém entra/sai. (Em breve)
-            </p>
+            <AlertRulesPanel eventId={id!} members={members} />
           </div>
         </aside>
       </div>

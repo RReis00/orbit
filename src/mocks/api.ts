@@ -1,8 +1,15 @@
 // src/mocks/api.ts
 import { db } from './db'
-import type { Event, EventMember, LiveStatus, NotificationRule, LocationUpdate } from '../lib/types'
+import type {
+  Event,
+  EventMember,
+  LiveStatus,
+  NotificationRule,
+  LocationUpdate,
+} from '../lib/types'
 import { deriveStatus } from '../lib/date'
 import { applyBlur, insideGeofence, distanceMeters } from '../lib/geo'
+import { eventBus } from '../lib/eventBus'
 
 function clampLatLng(lat?: number, lng?: number) {
   if (typeof lat === 'number' && typeof lng === 'number') {
@@ -112,7 +119,7 @@ export async function getLiveStatus(eventId: string): Promise<LiveStatus[]> {
   return db.liveStatus.filter((ls) => ls.eventId === eventId)
 }
 
-/** Recebe uma posição e atualiza histórico + live_status (mock). */
+/** Recebe uma posição e atualiza histórico + live_status (mock), emitindo alertas se cruzar o raio. */
 export async function postLocation(
   eventId: string,
   data: Pick<LocationUpdate, 'userId' | 'lat' | 'lng' | 'accuracyM' | 'source'>,
@@ -155,11 +162,15 @@ export async function postLocation(
       lastDistanceM: undefined,
     }
     db.liveStatus.push(ls)
-  } else {
-    ls.lastAt = nowIso
-    ls.lastLat = blurred.lat
-    ls.lastLng = blurred.lng
   }
+
+  // estado anterior
+  const prevState = ls.fenceState
+
+  // atualizar posição atual
+  ls.lastAt = nowIso
+  ls.lastLat = blurred.lat
+  ls.lastLng = blurred.lng
 
   // calcula estado de geofence e distância se aplicável
   if (event.hasGeofence && event.center && event.radiusM) {
@@ -180,6 +191,49 @@ export async function postLocation(
     ls.lastDistanceM = undefined
   }
 
+  // se mudou de estado (inside <-> outside), aplica regras e emite alertas
+  const changed =
+    prevState &&
+    prevState !== 'unknown' &&
+    ls.fenceState !== prevState &&
+    ls.fenceState !== 'unknown'
+
+  if (changed) {
+    const type: 'enter' | 'exit' = ls.fenceState === 'inside' ? 'enter' : 'exit'
+    const rules = db.notificationRules.filter((r) => r.eventId === eventId && r.active)
+
+    const recipients = new Set<string>()
+    for (const r of rules) {
+      if (r.scope === 'event') {
+        if ((type === 'enter' && r.onEnter) || (type === 'exit' && r.onExit)) {
+          recipients.add(r.notifyUserId)
+        }
+      } else if (r.scope === 'member') {
+        if (
+          r.targetUserId === data.userId &&
+          ((type === 'enter' && r.onEnter) || (type === 'exit' && r.onExit))
+        ) {
+          recipients.add(r.notifyUserId)
+        }
+      }
+    }
+
+    const actor = db.eventMembers.find((m) => m.eventId === eventId && m.userId === data.userId)
+
+    const payload = {
+      type,
+      eventId,
+      actorUserId: data.userId,
+      actorName: actor?.displayName,
+      distanceM: ls.lastDistanceM,
+      whenISO: nowIso,
+    }
+
+    for (const notifyUserId of recipients) {
+      eventBus.emit(`notify:${notifyUserId}`, { ...payload, notifyUserId })
+    }
+  }
+
   return { ...ls }
 }
 
@@ -187,4 +241,24 @@ export async function postLocation(
 
 export async function listRules(eventId: string): Promise<NotificationRule[]> {
   return db.notificationRules.filter((r) => r.eventId === eventId)
+}
+
+export async function createRule(
+  eventId: string,
+  data: Omit<NotificationRule, 'ruleId' | 'eventId'>,
+): Promise<NotificationRule> {
+  const rule: NotificationRule = {
+    ...data,
+    eventId,
+    ruleId: crypto.randomUUID(),
+  }
+  db.notificationRules.push(rule)
+  return { ...rule }
+}
+
+export async function toggleRule(ruleId: string, active: boolean): Promise<NotificationRule> {
+  const r = db.notificationRules.find((x) => x.ruleId === ruleId)
+  if (!r) throw new Error('Regra não encontrada')
+  r.active = active
+  return { ...r }
 }

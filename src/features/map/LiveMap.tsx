@@ -2,11 +2,11 @@
 import { MapContainer, TileLayer, Circle, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import * as L from 'leaflet'
+import { useEffect, useMemo, useRef } from 'react'
 import type { Event, EventMember, LiveStatus } from '../../lib/types'
 import { insideGeofence } from '../../lib/geo'
-import { useEffect } from 'react'
 
-// Corrige ícones default do Leaflet com Vite
+// Corrige ícones default do Leaflet (Vite)
 const defaultIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -18,19 +18,32 @@ const defaultIcon = new L.Icon({
 })
 L.Marker.prototype.options.icon = defaultIcon
 
-function FitOnData({ event, live }: { event: Event; live: LiveStatus[] }) {
+function FitOnce({ points, enable }: { points: L.LatLngExpression[]; enable: boolean }) {
   const map = useMap()
+  const hasFitOnce = useRef(false)
+  const userInteracted = useRef(false)
+
+  // Se o utilizador mexer, não voltamos a auto-fit
   useEffect(() => {
-    const latlngs: L.LatLngExpression[] = []
-    if (event.hasGeofence && event.center) {
-      latlngs.push([event.center.lat, event.center.lng])
+    const onStart = () => {
+      userInteracted.current = true
     }
-    live.forEach((ls) => latlngs.push([ls.lastLat, ls.lastLng]))
-    if (latlngs.length > 0) {
-      const bounds = L.latLngBounds(latlngs)
-      map.fitBounds(bounds.pad(0.3), { animate: false })
+    map.on('movestart', onStart)
+    map.on('zoomstart', onStart)
+    return () => {
+      map.off('movestart', onStart)
+      map.off('zoomstart', onStart)
     }
-  }, [event, live, map])
+  }, [map])
+
+  // Faz fit só 1x (ou até o utilizador mexer)
+  useEffect(() => {
+    if (!enable || userInteracted.current || hasFitOnce.current || points.length === 0) return
+    const bounds = L.latLngBounds(points as L.LatLngExpression[])
+    map.fitBounds(bounds.pad(0.3), { animate: false, maxZoom: 17 })
+    hasFitOnce.current = true
+  }, [enable, points, map])
+
   return null
 }
 
@@ -45,10 +58,20 @@ export function LiveMap({
   live: LiveStatus[]
   meUserId?: string
 }) {
-  const center = event.center ?? { lat: 39.744, lng: -8.807 } // fallback
+  const center = event.center ?? { lat: 39.744, lng: -8.807 }
+
+  // Pontos a considerar para o fit inicial (geofence + posições live)
+  const fitPoints = useMemo(() => {
+    const pts: L.LatLngExpression[] = []
+    if (event.hasGeofence && event.center) {
+      pts.push([event.center.lat, event.center.lng])
+    }
+    for (const ls of live) pts.push([ls.lastLat, ls.lastLng])
+    return pts
+  }, [event.hasGeofence, event.center, live])
+
   return (
     <MapContainer
-      key={`map-${event.id}`}
       center={[center.lat, center.lng]}
       zoom={15}
       style={{ height: '256px', width: '100%' }}
@@ -56,12 +79,11 @@ export function LiveMap({
       scrollWheelZoom
     >
       <TileLayer
-        // Podes trocar para MapTiler/OSM com key depois
         attribution="&copy; OpenStreetMap"
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* Círculo da geofence (se ativo) */}
+      {/* Geofence (se ativo) */}
       {event.hasGeofence && event.center && event.radiusM && (
         <Circle
           center={[event.center.lat, event.center.lng]}
@@ -70,7 +92,7 @@ export function LiveMap({
         />
       )}
 
-      {/* Markers dos participantes */}
+      {/* Marcadores dos participantes */}
       {live.map((ls) => {
         const member = members.find((m) => m.userId === ls.userId)
         const label = member?.displayName ?? ls.userId.slice(0, 6)
@@ -106,7 +128,8 @@ export function LiveMap({
         )
       })}
 
-      <FitOnData event={event} live={live} />
+      {/* Fit inicial suave e sem “reset” de zoom */}
+      <FitOnce points={fitPoints} enable={true} />
     </MapContainer>
   )
 }

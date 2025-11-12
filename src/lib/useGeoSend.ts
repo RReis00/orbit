@@ -1,4 +1,3 @@
-// src/lib/useGeoSend.ts
 import { useEffect, useRef, useState } from 'react'
 import { postLocation } from '../mocks/api'
 
@@ -6,8 +5,8 @@ type Options = {
   enabled: boolean
   eventId?: string
   userId?: string
-  intervalMs?: number          // envio periódico se watchPosition não estiver disponível
-  minDeltaMeters?: number      // só envia se mexer pelo menos isto
+  intervalMs?: number // envio periódico se watchPosition não estiver disponível
+  minDeltaMeters?: number // só envia se mexer pelo menos isto
 }
 
 function haversineMeters(a: GeolocationCoordinates, b: GeolocationCoordinates) {
@@ -17,8 +16,7 @@ function haversineMeters(a: GeolocationCoordinates, b: GeolocationCoordinates) {
   const dLng = toRad(b.longitude - a.longitude)
   const lat1 = toRad(a.latitude)
   const lat2 = toRad(b.latitude)
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
@@ -32,7 +30,7 @@ export function useGeoSend({
   const [error, setError] = useState<string | null>(null)
   const last = useRef<GeolocationCoordinates | null>(null)
   const watchId = useRef<number | null>(null)
-  const timer = useRef<any>(null)
+  const timer = useRef<number | null>(null)
 
   useEffect(() => {
     if (!enabled || !eventId || !userId) {

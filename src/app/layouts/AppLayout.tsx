@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { ToastsProvider } from '../../features/notifications/ToastsProvider'
 
 export function AppLayout() {
   const { pathname } = useLocation()
@@ -32,9 +33,13 @@ export function AppLayout() {
         </header>
       )}
 
-      <main className="mx-auto max-w-5xl px-4 py-6">
-        <Outlet />
-      </main>
+      <ToastsProvider>
+        {' '}
+        <main className="mx-auto max-w-5xl px-4 py-6">
+          <Outlet />
+        </main>
+      </ToastsProvider>
+
       <footer className="mx-auto max-w-5xl px-4 pb-8 pt-4 text-xs text-white/50">
         <p>© {new Date().getFullYear()} Orbit — MVP</p>
       </footer>
