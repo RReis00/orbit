@@ -4,14 +4,14 @@ import { useNavigate } from 'react-router-dom'
 import { createEvent } from '../../mocks/api'
 import { useCurrentUser } from '../../lib/useCurrentUser'
 import type { GeoPoint } from '../../lib/types'
+import { MapPickerModal } from '../../features/map/MapPicker'
 
 function clampLatLng(lat?: number, lng?: number): GeoPoint | null {
   if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null
-  const clamped: GeoPoint = {
+  return {
     lat: Math.max(-90, Math.min(90, lat)),
     lng: Math.max(-180, Math.min(180, lng)),
   }
-  return clamped
 }
 
 export function EventNew() {
@@ -27,6 +27,8 @@ export function EventNew() {
   const [loading, setLoading] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [gettingCenter, setGettingCenter] = useState(false)
+
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   // validação
   const datesValid = useMemo(() => {
@@ -59,6 +61,7 @@ export function EventNew() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isValid || !currentUser) return
+
     try {
       setLoading(true)
       const newEvent = await createEvent({
@@ -76,10 +79,9 @@ export function EventNew() {
     }
   }
 
-  // tenta semear o centro com a posição atual quando o utilizador liga a geofence
+  // semear centro ao ativar geofence (best-effort)
   useEffect(() => {
     if (!hasGeofence || center) return
-    // não bloqueia UI; se falhar, o user pode clicar no botão manualmente
     if (!('geolocation' in navigator)) return
     setGettingCenter(true)
     setGeoError(null)
@@ -89,10 +91,7 @@ export function EventNew() {
         if (c) setCenter(c)
         setGettingCenter(false)
       },
-      () => {
-        // silencioso aqui; mostramos botão para tentar de novo
-        setGettingCenter(false)
-      },
+      () => setGettingCenter(false),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
     )
   }, [hasGeofence]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -107,11 +106,8 @@ export function EventNew() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const c = clampLatLng(pos.coords.latitude, pos.coords.longitude)
-        if (!c) {
-          setGeoError('Leitura inválida da posição.')
-        } else {
-          setCenter(c)
-        }
+        if (!c) setGeoError('Leitura inválida da posição.')
+        else setCenter(c)
         setGettingCenter(false)
       },
       (err) => {
@@ -214,9 +210,7 @@ export function EventNew() {
                   className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
                 />
               </div>
-              <p className="text-xs text-white/50">
-                ~ {(radiusM / 1000).toFixed(2)} km
-              </p>
+              <p className="text-xs text-white/50">~ {(radiusM / 1000).toFixed(2)} km</p>
             </div>
 
             {/* Centro */}
@@ -250,6 +244,15 @@ export function EventNew() {
                 >
                   {gettingCenter ? 'A obter localização…' : 'Usar a minha localização'}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className="rounded-xl bg-white px-3 py-1.5 text-sm font-medium text-gray-900"
+                >
+                  Escolher no mapa
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setCenter(null)}
@@ -258,10 +261,7 @@ export function EventNew() {
                   Limpar centro
                 </button>
 
-                {/* Placeholder para integrar “Escolher no mapa” */}
-                <span className="text-xs text-white/50">
-                  (Em breve: escolher no mapa com um clique)
-                </span>
+                <span className="text-xs text-white/50">(podes clicar/arrastar no mapa)</span>
               </div>
 
               {geoError && <p className="text-xs text-amber-300/80">{geoError}</p>}
@@ -298,6 +298,18 @@ export function EventNew() {
           </p>
         )}
       </form>
+
+      {/* Modal do MapPicker */}
+      <MapPickerModal
+        open={pickerOpen}
+        initialCenter={center}
+        radiusM={radiusM}
+        onCancel={() => setPickerOpen(false)}
+        onConfirm={(c) => {
+          setCenter(c)
+          setPickerOpen(false)
+        }}
+      />
     </section>
   )
 }
