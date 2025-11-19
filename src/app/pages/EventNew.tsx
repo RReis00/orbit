@@ -52,11 +52,7 @@ export function EventNew() {
     )
   }, [hasGeofence, center, radiusM])
 
-  const isValid =
-    title.trim().length >= 1 &&
-    title.trim().length <= 80 &&
-    datesValid &&
-    centerValid
+  const isValid = title.trim().length >= 1 && title.trim().length <= 80 && datesValid && centerValid
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -116,17 +112,6 @@ export function EventNew() {
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
     )
-  }
-
-  function handleCenterLatChange(v: string) {
-    const n = Number(v)
-    const next = clampLatLng(n, center?.lng ?? 0)
-    setCenter(next)
-  }
-  function handleCenterLngChange(v: string) {
-    const n = Number(v)
-    const next = clampLatLng(center?.lat ?? 0, n)
-    setCenter(next)
   }
 
   return (
@@ -215,25 +200,7 @@ export function EventNew() {
 
             {/* Centro */}
             <div className="space-y-2">
-              <label className="block text-sm text-white/80">Centro (lat, lng)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="Lat"
-                  value={center?.lat ?? ''}
-                  onChange={(e) => handleCenterLatChange(e.target.value)}
-                  className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
-                />
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="Lng"
-                  value={center?.lng ?? ''}
-                  onChange={(e) => handleCenterLngChange(e.target.value)}
-                  className="rounded-xl bg-white/5 px-3 py-2 outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
-                />
-              </div>
+              <label className="block text-sm text-white/80">Local do evento</label>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <button
@@ -250,7 +217,7 @@ export function EventNew() {
                   onClick={() => setPickerOpen(true)}
                   className="rounded-xl bg-white px-3 py-1.5 text-sm font-medium text-gray-900"
                 >
-                  Escolher no mapa
+                  Escolher no mapa / morada
                 </button>
 
                 <button
@@ -258,16 +225,19 @@ export function EventNew() {
                   onClick={() => setCenter(null)}
                   className="rounded-xl bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15"
                 >
-                  Limpar centro
+                  Limpar local
                 </button>
-
-                <span className="text-xs text-white/50">(podes clicar/arrastar no mapa)</span>
               </div>
 
               {geoError && <p className="text-xs text-amber-300/80">{geoError}</p>}
               {center && (
                 <p className="text-xs text-white/60">
                   Centro definido em ({center.lat.toFixed(5)}, {center.lng.toFixed(5)})
+                </p>
+              )}
+              {!center && (
+                <p className="text-xs text-white/50">
+                  Escolhe um local usando a tua localização ou pesquisando no mapa.
                 </p>
               )}
             </div>
@@ -294,7 +264,8 @@ export function EventNew() {
 
         {!isValid && (
           <p className="text-sm text-red-400/90">
-            Preenche o título, datas válidas e, se ligares a geofence, define centro e um raio &gt; 0.
+            Preenche o título, datas válidas e, se ligares a geofence, escolhe um local e um raio
+            &gt; 0.
           </p>
         )}
       </form>

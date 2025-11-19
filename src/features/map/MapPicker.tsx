@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Circle, Marker, useMap, useMapEvent } from 're
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { GeoPoint } from '../../lib/types'
+import { searchPlaces, type PlaceResult } from '../../lib/places'
 
 // Corrige ícones default do Leaflet (Vite) — igual ao LiveMap
 const defaultIcon = new L.Icon({
@@ -58,10 +59,18 @@ export function MapPickerModal({ open, initialCenter, radiusM, onCancel, onConfi
   const [geoLoading, setGeoLoading] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
 
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<PlaceResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!open) return
     setCenter(initialCenter ?? null)
     setGeoError(null)
+    setQuery('')
+    setResults([])
+    setSearchError(null)
   }, [open, initialCenter])
 
   const mapCenter = useMemo(() => {
@@ -92,6 +101,29 @@ export function MapPickerModal({ open, initialCenter, radiusM, onCancel, onConfi
     )
   }
 
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    if (!query.trim()) return
+    try {
+      setSearching(true)
+      setSearchError(null)
+      const res = await searchPlaces(query)
+      setResults(res)
+      if (res.length === 0) {
+        setSearchError('Não encontrámos nenhum local com esse nome.')
+      }
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Erro ao procurar local.')
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function handlePickPlace(place: PlaceResult) {
+    setCenter({ lat: place.lat, lng: place.lng })
+    setResults([])
+  }
+
   if (!open) return null
 
   return (
@@ -101,7 +133,7 @@ export function MapPickerModal({ open, initialCenter, radiusM, onCancel, onConfi
       {/* modal */}
       <div className="relative z-10 w-[min(100vw-2rem,900px)] rounded-2xl border border-white/10 bg-[#0b0b0f] p-4 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Escolher no mapa</h3>
+          <h3 className="text-lg font-semibold">Escolher local do evento</h3>
           <button
             onClick={onCancel}
             className="rounded-xl bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15"
@@ -109,6 +141,41 @@ export function MapPickerModal({ open, initialCenter, radiusM, onCancel, onConfi
             Fechar
           </button>
         </div>
+
+        {/* Barra de pesquisa de moradas/locais */}
+        <form onSubmit={handleSearch} className="mb-2 flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Pesquisar local ou morada (ex.: Centro de Leiria)…"
+            className="flex-1 rounded-xl bg-white/5 px-3 py-1.5 text-sm outline-none ring-1 ring-white/10 focus:ring-2 focus:ring-white/30"
+          />
+          <button
+            type="submit"
+            className="rounded-xl bg-white px-3 py-1.5 text-sm font-medium text-gray-900 disabled:cursor-not-allowed disabled:bg-white/50"
+            disabled={searching}
+          >
+            {searching ? 'A procurar…' : 'Procurar'}
+          </button>
+        </form>
+
+        {searchError && <p className="mb-1 text-xs text-amber-300/80">{searchError}</p>}
+
+        {results.length > 0 && (
+          <ul className="mb-2 max-h-28 space-y-1 overflow-y-auto text-xs">
+            {results.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => handlePickPlace(p)}
+                  className="w-full rounded-lg bg-white/5 px-2 py-1 text-left hover:bg-white/10"
+                >
+                  {p.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-white/70">
           <button
