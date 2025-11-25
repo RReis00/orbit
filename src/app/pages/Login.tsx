@@ -9,7 +9,7 @@ export function Login() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    navigate('/events/new')
+    navigate('/events')
   }
 
   return (

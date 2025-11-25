@@ -13,6 +13,15 @@ export function AppLayout() {
             </Link>
             <nav className="flex items-center gap-4 text-sm">
               <NavLink
+                to="/events"
+                end
+                className={({ isActive }) =>
+                  `rounded-xl px-3 py-1 ${isActive ? 'bg-white/10' : 'hover:bg-white/5'}`
+                }
+              >
+                Lista de Eventos
+              </NavLink>
+              <NavLink
                 to="/events/new"
                 className={({ isActive }) =>
                   `rounded-xl px-3 py-1 ${isActive ? 'bg-white/10' : 'hover:bg-white/5'}`

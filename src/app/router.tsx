@@ -4,6 +4,7 @@ import { Login } from './pages/Login'
 import { Home } from './pages/Home'
 import { EventNew } from './pages/EventNew'
 import { EventDetail } from './pages/EventDetail'
+import { EventList } from './pages/EventList'
 
 export const router = createBrowserRouter([
   {
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
       { path: '/login', element: <Login /> },
       { path: '/events/new', element: <EventNew /> },
       { path: '/events/:id', element: <EventDetail /> },
+      { path: 'events', element: <EventList /> },
     ],
   },
 ])

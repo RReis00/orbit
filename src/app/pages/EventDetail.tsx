@@ -11,6 +11,23 @@ import { useAlertChannel } from '../../lib/useAlertChannel'
 import { AlertRulesPanel } from '../../features/events/AlertRulesPanel'
 import { useGeoSend } from '../../lib/useGeoSend'
 
+function formatAgo(iso?: string): string {
+  if (!iso) return 'sem dados'
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return 'sem dados'
+  const now = Date.now()
+  const diffSec = Math.max(0, Math.round((now - t) / 1000))
+
+  if (diffSec < 30) return 'agora'
+  if (diffSec < 90) return 'há 1 min'
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `há ${diffMin} min`
+  const diffH = Math.round(diffMin / 60)
+  if (diffH < 24) return `há ${diffH} h`
+  const diffD = Math.round(diffH / 24)
+  return `há ${diffD} d`
+}
+
 export function EventDetail() {
   const { id } = useParams<{ id: string }>()
   const { currentUser } = useCurrentUser()
@@ -29,9 +46,14 @@ export function EventDetail() {
     [members, currentUser?.id],
   )
 
+  const iAmMember = !!meMember
+  const isActive = event?.status === 'active'
+  const isScheduled = event?.status === 'scheduled'
+  const isEnded = event?.status === 'ended'
+
   // Envio de geolocalização (cliente -> backend) + coords locais p/ overlay
   const { coords, error: geoError, isWatching, usingFallback, lastSentAt } = useGeoSend({
-    enabled: !!(event && meMember?.locationSharingEnabled && event.status === 'active'),
+    enabled: !!(event && iAmMember && meMember?.locationSharingEnabled && isActive),
     eventId: id,
     userId: currentUser?.id,
     intervalMs: 5000,
@@ -55,6 +77,123 @@ export function EventDetail() {
         : ls,
     )
   }, [live, coords, currentUser?.id])
+
+  // Juntar membros + live e enriquecer com info útil
+  const membersWithLive = useMemo(() => {
+    return members
+      .map((m) => {
+        const ls = liveForMap.find((l) => l.userId === m.userId)
+        let fenceText: string | null = null
+        let distanceText: string | null = null
+
+        if (!event?.hasGeofence || !event.center || !event.radiusM) {
+          fenceText = 'Sem geofence'
+        } else if (!ls || ls.fenceState === 'unknown') {
+          fenceText = 'Estado do raio desconhecido'
+        } else if (ls.fenceState === 'inside') {
+          fenceText = 'Dentro do raio'
+        } else if (ls.fenceState === 'outside') {
+          fenceText = 'Fora do raio'
+        }
+
+        if (ls?.lastDistanceM != null) {
+          distanceText = `${ls.lastDistanceM} m`
+        }
+
+        return {
+          member: m,
+          live: ls,
+          fenceText,
+          distanceText,
+          isMe: m.userId === currentUser?.id,
+        }
+      })
+      .sort((a, b) => {
+        // Eu primeiro
+        if (a.isMe && !b.isMe) return -1
+        if (!a.isMe && b.isMe) return 1
+        // depois por nome
+        return (a.member.displayName || '').localeCompare(b.member.displayName || '')
+      })
+  }, [members, liveForMap, event, currentUser?.id])
+
+  // Mensagem amigável sobre o estado da localização
+  const locationStatus = useMemo(() => {
+    // Evento terminado
+    if (isEnded) {
+      return {
+        main: 'Localização desligada: este evento já terminou.',
+        secondary: 'O mapa mostra apenas a última posição conhecida de cada participante, se existir.',
+      }
+    }
+
+    // Evento ainda não começou
+    if (isScheduled) {
+      if (!iAmMember) {
+        return {
+          main: 'Evento ainda não está ativo.',
+          secondary: 'Junta-te ao evento. Quando estiver em curso, a tua localização começará a ser partilhada.',
+        }
+      }
+      if (!meMember?.locationSharingEnabled) {
+        return {
+          main: 'Evento ainda não está ativo e a tua partilha está pausada.',
+          secondary: 'Quando o evento começar, podes ligar a partilha para enviares a tua posição.',
+        }
+      }
+      return {
+        main: 'Evento ainda não está ativo.',
+        secondary: 'Assim que ficar em curso, a tua localização será enviada automaticamente para este evento.',
+      }
+    }
+
+    // Evento ativo
+    if (!iAmMember) {
+      return {
+        main: 'Não estás a participar neste evento.',
+        secondary: 'Clica em "Entrar no evento" para começares a partilhar a tua localização com o grupo.',
+      }
+    }
+
+    if (!meMember?.locationSharingEnabled) {
+      return {
+        main: 'Partilha de localização pausada.',
+        secondary: 'Clica em "Retomar partilha" para voltares a enviar a tua posição para este evento.',
+      }
+    }
+
+    if (geoError) {
+      return {
+        main: 'Não foi possível obter a tua localização.',
+        secondary:
+          'Confirma se deste permissão de localização ao navegador e se o GPS / localização do dispositivo estão ativos.',
+      }
+    }
+
+    const modeParts: string[] = []
+    if (isWatching) modeParts.push('modo contínuo (watch)')
+    if (usingFallback) modeParts.push('intervalos periódicos')
+    const modeText = modeParts.length > 0 ? modeParts.join(' + ') : 'modo automático'
+
+    const last =
+      lastSentAt != null
+        ? `Último envio: ${formatDateTimeISO(lastSentAt)}.`
+        : 'Ainda não temos nenhum envio registado.'
+
+    return {
+      main: 'A enviar a tua localização em tempo real para este evento.',
+      secondary: `Modo: ${modeText}. ${last}`,
+    }
+  }, [
+    isEnded,
+    isScheduled,
+    iAmMember,
+    meMember?.locationSharingEnabled,
+    geoError,
+    isWatching,
+    usingFallback,
+    lastSentAt,
+  ])
 
   useEffect(() => {
     let active = true
@@ -87,7 +226,7 @@ export function EventDetail() {
   }, [id])
 
   async function handleJoin() {
-    if (!id || !currentUser) return
+    if (!id || !currentUser || isEnded) return
     try {
       setJoining(true)
       const joined = await joinEvent(id, {
@@ -106,7 +245,7 @@ export function EventDetail() {
   }
 
   async function toggleSharing() {
-    if (!id || !currentUser || !meMember) return
+    if (!id || !currentUser || !meMember || isEnded) return
     try {
       setToggling(true)
       const updated = await updateMemberSharing(id, currentUser.id, {
@@ -147,10 +286,9 @@ export function EventDetail() {
 
   if (!event) return null
 
-  const iAmMember = !!meMember
   const geoHints =
-    geoError || liveError
-      ? [geoError, liveError].filter(Boolean).join(' · ')
+    liveError // só usamos o erro de live aqui para não duplicar o geoError
+      ? liveError
       : undefined
 
   return (
@@ -162,6 +300,18 @@ export function EventDetail() {
           <p className="text-sm text-white/60">
             {formatDateTimeISO(event.startsAt)} — {formatDateTimeISO(event.endsAt)}
           </p>
+          {isScheduled && (
+            <p className="mt-1 text-xs text-white/60">
+              Este evento ainda não está ativo. A localização só será partilhada quando estiver em
+              curso.
+            </p>
+          )}
+          {isEnded && (
+            <p className="mt-1 text-xs text-white/60">
+              Este evento terminou. O mapa mostra apenas a última posição conhecida de cada
+              participante, se disponível.
+            </p>
+          )}
         </div>
         <div className="text-sm">
           <span
@@ -199,40 +349,64 @@ export function EventDetail() {
             </p>
           )}
 
-          {/* Estado de localização (watch/fallback/último envio) */}
-          <div className="mt-2 text-xs text-white/60">
-            <span className="mr-2">
-              {isWatching ? 'watch ativo' : 'watch inativo'}
-            </span>
-            <span className="mr-2">·</span>
-            <span className="mr-2">
-              {usingFallback ? 'fallback por intervalo' : 'sem fallback'}
-            </span>
-            {lastSentAt && (
-              <>
-                <span className="mr-2">·</span>
-                <span>último envio: {formatDateTimeISO(lastSentAt)}</span>
-              </>
+          {/* Estado de localização mais amigável */}
+          <div className="mt-3 rounded-xl bg-white/5 px-3 py-2 text-xs text-white/80">
+            <div>{locationStatus.main}</div>
+            {locationStatus.secondary && (
+              <div className="mt-0.5 text-white/60">{locationStatus.secondary}</div>
             )}
           </div>
 
-          {geoHints && <p className="mt-2 text-xs text-amber-300/80">{geoHints}</p>}
+          {/* Erro de live (polling) */}
+          {geoHints && (
+            <div className="mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {geoHints}
+            </div>
+          )}
         </article>
 
         {/* Lateral: Participantes / Controlo */}
         <aside className="space-y-6">
           <div className="rounded-2xl border border-white/10 p-4">
             <h3 className="mb-2 font-semibold">Participantes</h3>
-            {members.length === 0 ? (
+            {membersWithLive.length === 0 ? (
               <p className="text-sm text-white/60">Ainda não há participantes.</p>
             ) : (
               <ul className="space-y-2 text-sm text-white/90">
-                {members.map((m) => (
-                  <li key={m.userId} className="flex items-center justify-between">
-                    <span className="truncate">{m.displayName}</span>
-                    <span className="text-xs text-white/60">
-                      partilha: {m.locationSharingEnabled ? 'ligada' : 'desligada'}
-                    </span>
+                {membersWithLive.map(({ member, live: liveInfo, fenceText, distanceText, isMe }) => (
+                  <li
+                    key={member.userId}
+                    className={
+                      'flex flex-col gap-0.5 rounded-xl px-3 py-2 ' +
+                      (isMe ? 'bg-white/5' : 'bg-transparent')
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">
+                        {member.displayName}
+                        {isMe ? ' (tu)' : ''}
+                      </span>
+                      <span
+                        className={
+                          'rounded-full px-2 py-0.5 text-[11px] font-medium ' +
+                          (member.locationSharingEnabled
+                            ? 'bg-emerald-500/10 text-emerald-200'
+                            : 'bg-white/5 text-white/60')
+                        }
+                      >
+                        {member.locationSharingEnabled ? 'partilha ON' : 'partilha OFF'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-white/60">
+                      <span className="truncate">
+                        {fenceText}
+                        {distanceText ? ` · ${distanceText}` : ''}
+                      </span>
+                      {liveInfo?.lastAt && (
+                        <span className="shrink-0">{formatAgo(liveInfo.lastAt)}</span>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -242,23 +416,27 @@ export function EventDetail() {
               {!iAmMember ? (
                 <button
                   onClick={handleJoin}
-                  disabled={joining}
+                  disabled={joining || isEnded}
                   className="rounded-xl bg-white px-3 py-1.5 text-sm font-medium text-gray-900 disabled:cursor-not-allowed disabled:bg-white/50"
                 >
-                  {joining ? 'A entrar…' : 'Entrar no evento'}
+                  {isEnded ? 'Evento terminado' : joining ? 'A entrar…' : 'Entrar no evento'}
                 </button>
               ) : (
                 <button
                   onClick={toggleSharing}
-                  disabled={toggling}
+                  disabled={toggling || isEnded}
                   className="rounded-xl bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15 disabled:cursor-not-allowed"
                 >
-                  {meMember?.locationSharingEnabled ? 'Pausar partilha' : 'Retomar partilha'}
+                  {isEnded
+                    ? 'Evento terminado'
+                    : meMember?.locationSharingEnabled
+                    ? 'Pausar partilha'
+                    : 'Retomar partilha'}
                 </button>
               )}
 
-              <Link to="/events/new" className="text-sm text-white/70 underline hover:text-white">
-                Criar outro evento
+              <Link to="/events" className="text-sm text-white/70 underline hover:text-white">
+                Voltar à lista
               </Link>
             </div>
           </div>
