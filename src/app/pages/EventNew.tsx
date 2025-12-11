@@ -23,7 +23,7 @@ export function EventNew() {
   const [endsAt, setEndsAt] = useState('')
   const [hasGeofence, setHasGeofence] = useState(false)
   const [center, setCenter] = useState<GeoPoint | null>(null)
-  const [radiusM, setRadiusM] = useState<number>(300)
+  const [radiusM, setRadiusM] = useState<number>(150)
   const [loading, setLoading] = useState(false)
   const [geoError, setGeoError] = useState<string | null>(null)
   const [gettingCenter, setGettingCenter] = useState(false)
@@ -90,7 +90,7 @@ export function EventNew() {
       () => setGettingCenter(false),
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 },
     )
-  }, [hasGeofence]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasGeofence]) 
 
   function handleUseMyLocation() {
     if (!('geolocation' in navigator)) {

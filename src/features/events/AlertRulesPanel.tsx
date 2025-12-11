@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createRule, listRules, toggleRule } from '../../mocks/api'
 import type { EventMember, NotificationRule } from '../../lib/types'
+import { DarkSelect } from '../../components/DarkSelect'
 
 export function AlertRulesPanel({ eventId, members }: { eventId: string; members: EventMember[] }) {
   const [rules, setRules] = useState<NotificationRule[]>([])
@@ -17,7 +18,8 @@ export function AlertRulesPanel({ eventId, members }: { eventId: string; members
   useEffect(() => {
     let active = true
     async function load() {
-      setLoading(true); setError(null)
+      setLoading(true)
+      setError(null)
       try {
         const rs = await listRules(eventId)
         if (!active) return
@@ -30,7 +32,9 @@ export function AlertRulesPanel({ eventId, members }: { eventId: string; members
       }
     }
     load()
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [eventId])
 
   async function handleCreate(e: React.FormEvent) {
@@ -53,61 +57,66 @@ export function AlertRulesPanel({ eventId, members }: { eventId: string; members
     setRules((prev) => prev.map((r) => (r.ruleId === updated.ruleId ? updated : r)))
   }
 
+  // helpers para options
+  const scopeOptions = [
+    { value: 'event', label: 'Evento (todos os membros)' },
+    { value: 'member', label: 'Membro específico' },
+  ]
+
+  const memberOptions = [
+    { value: '', label: '— escolher —' },
+    ...members.map((m) => ({ value: m.userId, label: m.displayName })),
+  ]
+
+  const destinatarioOptions = memberOptions
+
   return (
     <div className="space-y-4">
       <form onSubmit={handleCreate} className="space-y-3 rounded-2xl border border-white/10 p-4">
         <h4 className="font-semibold">Nova Regra</h4>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="block text-white/70">Scope</span>
-            <select
-              value={scope}
-              onChange={(e) => setScope(e.target.value as any)}
-              className="mt-1 w-full rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10"
-            >
-              <option value="event">Evento (todos os membros)</option>
-              <option value="member">Membro específico</option>
-            </select>
-          </label>
+          {/* SCOPE */}
+          <DarkSelect
+            label="Scope"
+            value={scope}
+            onChange={(v) => setScope(v as 'event' | 'member')}
+            options={scopeOptions}
+          />
 
+          {/* MEMBRO ALVO (apenas quando scope === 'member') */}
           {scope === 'member' && (
-            <label className="text-sm">
-              <span className="block text-white/70">Membro alvo</span>
-              <select
-                value={targetUserId ?? ''}
-                onChange={(e) => setTargetUserId(e.target.value || undefined)}
-                className="mt-1 w-full rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10"
-              >
-                <option value="">— escolher —</option>
-                {members.map((m) => (
-                  <option key={m.userId} value={m.userId}>{m.displayName}</option>
-                ))}
-              </select>
-            </label>
+            <DarkSelect
+              label="Membro alvo"
+              value={targetUserId ?? ''}
+              onChange={(v) => setTargetUserId(v || undefined)}
+              options={memberOptions}
+            />
           )}
 
-          <label className="text-sm">
-            <span className="block text-white/70">Destinatário</span>
-            <select
-              value={notifyUserId ?? ''}
-              onChange={(e) => setNotifyUserId(e.target.value || undefined)}
-              className="mt-1 w-full rounded-xl bg-white/5 px-3 py-2 ring-1 ring-white/10"
-            >
-              <option value="">— escolher —</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>{m.displayName}</option>
-              ))}
-            </select>
-          </label>
+          {/* DESTINATÁRIO */}
+          <DarkSelect
+            label="Destinatário"
+            value={notifyUserId ?? ''}
+            onChange={(v) => setNotifyUserId(v || undefined)}
+            options={destinatarioOptions}
+          />
 
           <div className="flex items-center gap-4">
             <label className="inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={onEnter} onChange={(e) => setOnEnter(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={onEnter}
+                onChange={(e) => setOnEnter(e.target.checked)}
+              />
               onEnter
             </label>
             <label className="inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={onExit} onChange={(e) => setOnExit(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={onExit}
+                onChange={(e) => setOnExit(e.target.checked)}
+              />
               onExit
             </label>
           </div>
@@ -131,19 +140,34 @@ export function AlertRulesPanel({ eventId, members }: { eventId: string; members
         ) : (
           <ul className="space-y-2 text-sm">
             {rules.map((r) => (
-              <li key={r.ruleId} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
+              <li
+                key={r.ruleId}
+                className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2"
+              >
                 <div className="space-y-0.5">
                   <div className="font-medium">
-                    {r.scope === 'event' ? 'Evento' : `Membro: ${members.find(m => m.userId === r.targetUserId)?.displayName ?? r.targetUserId?.slice(0,6)}`}
+                    {r.scope === 'event'
+                      ? 'Evento'
+                      : `Membro: ${
+                          members.find((m) => m.userId === r.targetUserId)?.displayName ??
+                          r.targetUserId?.slice(0, 6)
+                        }`}
                   </div>
                   <div className="text-white/60">
-                    Destinatário: {members.find(m => m.userId === r.notifyUserId)?.displayName ?? r.notifyUserId.slice(0,6)} ·
-                    &nbsp;{r.onEnter ? 'onEnter' : ''}{r.onEnter && r.onExit ? ' / ' : ''}{r.onExit ? 'onExit' : ''}
+                    Destinatário:{' '}
+                    {members.find((m) => m.userId === r.notifyUserId)?.displayName ??
+                      r.notifyUserId.slice(0, 6)}{' '}
+                    ·&nbsp;
+                    {r.onEnter ? 'onEnter' : ''}
+                    {r.onEnter && r.onExit ? ' / ' : ''}
+                    {r.onExit ? 'onExit' : ''}
                   </div>
                 </div>
                 <button
                   onClick={() => handleToggle(r)}
-                  className={`rounded-xl px-3 py-1 text-xs ${r.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/70'}`}
+                  className={`rounded-xl px-3 py-1 text-xs ${
+                    r.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/70'
+                  }`}
                 >
                   {r.active ? 'Ativa' : 'Inativa'}
                 </button>
